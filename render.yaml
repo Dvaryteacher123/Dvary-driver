@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: wingu-drive
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 18.20.0
+    # KUMBUKA: "disk" (persistent disk) kawaida haipatikani kwenye plan ya "free".
+    # Ukipandisha plan (mfano "starter"), ondoa "#" hapa chini ili mafile
+    # yasipotee kila deploy/restart mpya:
+    # disk:
+    #   name: wingu-drive-uploads
+    #   mountPath: /opt/render/project/src/uploads
+    #   sizeGB: 1
