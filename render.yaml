@@ -1,17 +1,74 @@
-services:
-  - type: web
-    name: wingu-drive
-    env: node
-    plan: free
-    buildCommand: npm install
-    startCommand: npm start
-    envVars:
-      - key: NODE_VERSION
-        value: 18.20.0
-    # KUMBUKA: "disk" (persistent disk) kawaida haipatikani kwenye plan ya "free".
-    # Ukipandisha plan (mfano "starter"), ondoa "#" hapa chini ili mafile
-    # yasipotee kila deploy/restart mpya:
-    # disk:
-    #   name: wingu-drive-uploads
-    #   mountPath: /opt/render/project/src/uploads
-    #   sizeGB: 1
+const express = require("express");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const UPLOAD_DIR = path.join(__dirname, "uploads");
+const MAX_FILE_SIZE_MB = 100;
+
+// Hakikisha folda ya uploads ipo
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+// Usanidi wa folda
+app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "views"));
+app.use(express.static(path.join(__dirname, "public")));
+app.use(express.urlencoded({ extended: true }));
+
+// Kazi ya kuorodhesha faili
+function listFiles() {
+  if (!fs.existsSync(UPLOAD_DIR)) return [];
+  return fs.readdirSync(UPLOAD_DIR)
+    .filter(f => f !== '.gitkeep')
+    .map(file => {
+      const filePath = path.join(UPLOAD_DIR, file);
+      const stat = fs.statSync(filePath);
+      return {
+        stored: file,
+        original: file.split('-').slice(1).join('-') || file,
+        size: (stat.size / (1024 * 1024)).toFixed(2) + " MB",
+        date: stat.mtime.toLocaleDateString()
+      };
+    })
+    .sort((a, b) => b.stored.split('-')[0] - a.stored.split('-')[0]);
+}
+
+// ROUTES
+app.get("/", (req, res) => {
+  res.render("index", { files: listFiles(), error: req.query.error || null });
+});
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9.-]/g, "_")}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_FILE_SIZE_MB * 1024 * 1024 },
+});
+
+app.post("/upload", upload.single("file"), (req, res) => {
+  if (!req.file) return res.redirect("/?error=Chagua faili kwanza");
+  res.redirect("/");
+});
+
+app.get("/download/:stored", (req, res) => {
+  res.download(path.join(UPLOAD_DIR, req.params.stored));
+});
+
+app.post("/delete/:stored", (req, res) => {
+  const filePath = path.join(UPLOAD_DIR, req.params.stored);
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  res.redirect("/");
+});
+
+app.listen(PORT, () => {
+  console.log(`Server iko hewani kwenye port ${PORT}`);
+});
